@@ -162,15 +162,13 @@ export function DiceResults({
                       alt={result.face.type}
                       className="w-8 h-8 object-contain transition-transform"
                       onError={(e) => {
-    console.error("图片加载失败，实际路径:", (e.target as HTMLImageElement).src);
-    (e.target as HTMLImageElement).src = '/fallback.png'; // 如果 fallback.png 也在 public 里，路径也要去掉 /public
-  }}
-  loading='lazy'
+                        console.error("图片加载失败，实际路径:", (e.target as HTMLImageElement).src);
+                        (e.target as HTMLImageElement).src = '/fallback.png'; // 如果 fallback.png 也在 public 里，路径也要去掉 /public
+                      }}
+                      loading='lazy'
                     />
 
-                    <span className="text-[9px] font-bold mt-1 truncate w-12 text-center">
-                      {getFaceLabel(result.face.type, result.face.value)}
-                    </span>
+
 
                     {selectedDice.has(result.id) && (
                       <div className="absolute -top-1 -right-1 bg-slate-800 text-white rounded-full p-0.5">
