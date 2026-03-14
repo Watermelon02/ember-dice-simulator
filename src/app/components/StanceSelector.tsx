@@ -1,4 +1,4 @@
-import { Shield, Zap, Swords } from 'lucide-react';
+import { Shield, Zap, Swords, ChevronsUp } from 'lucide-react';
 import { DefenseStance, AttackStance } from '../App';
 
 interface StanceSelectorProps {
@@ -22,13 +22,13 @@ export function StanceSelector({ defenseStance, attackStance, onDefenseStanceCha
       <div className="flex-[2] flex gap-2 p-1 bg-slate-200/50 rounded-2xl shadow-inner">
         <button onClick={() => onDefenseStanceChange(defenseStance === 'mobility' ? '宕机' : 'mobility')}
           className={btnClass(defenseStance === 'mobility', 'bg-blue-100')}>
-          <Zap className={`w-4 h-4 ${defenseStance === 'mobility' ? 'text-blue-600' : 'text-slate-400'}`} />
+          <ChevronsUp className={`w-4 h-4 ${defenseStance === 'mobility' ? 'text-blue-600' : 'text-slate-400'}`} />
           <span className={`text-[10px] font-bold ${defenseStance === 'mobility' ? 'text-blue-700' : 'text-slate-500'}`}>{translations.mobility_label}</span>
         </button>
         <button onClick={() => onDefenseStanceChange(defenseStance === '防御' ? '宕机' : '防御')}
-          className={btnClass(defenseStance === '防御', 'bg-indigo-100')}>
-          <Shield className={`w-4 h-4 ${defenseStance === '防御' ? 'text-indigo-600' : 'text-slate-400'}`} />
-          <span className={`text-[10px] font-bold ${defenseStance === '防御' ? 'text-indigo-700' : 'text-slate-500'}`}>{translations.defense_label}</span>
+          className={btnClass(defenseStance === '防御', 'bg-gray-300')}>
+          <Shield className={`w-4 h-4 ${defenseStance === '防御' ? 'text-white' : 'text-slate-400'}`} />
+          <span className={`text-[10px] font-bold ${defenseStance === '防御' ? 'text-gray-700' : 'text-slate-500'}`}>{translations.defense_label}</span>
         </button>
       </div>
       <div className="flex-[1] flex p-1 bg-slate-200/50 rounded-2xl shadow-inner">

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { DiceSelector } from './DiceSelector';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
-import { Dices, Zap, Target, RotateCcw } from 'lucide-react';
+import { Dices, Zap, Target, RotateCcw, Check } from 'lucide-react';
 import { motion } from 'motion/react';
 import { AttackStance } from '../App';
 import { getDiceImage } from '../../ImageDice';
@@ -33,8 +33,8 @@ export interface ElectronicWarfareProps {
 }
 
 export function ElectronicWarfare({ translations }: ElectronicWarfareProps) {
-  const [initiatorCount, setInitiatorCount] = useState(0);
-  const [responderCount, setResponderCount] = useState(0);
+  const [initiatorCount, setInitiatorCount] = useState(1);
+  const [responderCount, setResponderCount] = useState(1);
   const [initiatorResults, setInitiatorResults] = useState<DiceResult[]>([]);
   const [responderResults, setResponderResults] = useState<DiceResult[]>([]);
   const [selectedInitiatorDice, setSelectedInitiatorDice] = useState<Set<string>>(new Set());
@@ -130,6 +130,78 @@ export function ElectronicWarfare({ translations }: ElectronicWarfareProps) {
     }
     setSelectedResponderDice(newSelection);
   };
+  const getDiceStyle = (isSelected: boolean, isEffective: boolean) => {
+    const base = "relative flex flex-col items-center justify-center p-2 rounded-2xl cursor-pointer transition-all border-2";
+    const activeState = isSelected
+      ? "ring-2 ring-slate-800 scale-105 shadow-md bg-slate-200"
+      : "bg-slate-100 shadow-[4px_4px_8px_#bebebe,-4px_-4px_8px_#ffffff] hover:scale-105";
+
+    // 2. 移植无效状态（虚线边框+透明度+灰度）
+    const inactiveState = !isEffective
+      ? "opacity-40 grayscale border-dashed border-slate-400"
+      : "border-transparent";
+
+    return `${base} ${activeState} ${inactiveState}`;
+  };
+
+  // 3. 移植有效性判断逻辑
+  const isEffective = (face: DiceFace, stance: AttackStance) => {
+    if (face.type === 'blank') return false;
+    // 电子战模式下，若为攻击姿态，hollow-light 生效
+    if (face.type === 'hollow-light' && stance !== '攻击') return false;
+    return true;
+  };
+
+  const ewTypeRank: Record<string, number> = {
+    'lightning': 1,
+    'light': 2,
+    'hollow-light': 2,
+    'eye': 3,
+    'blank': 4
+  };
+
+  // 渲染骰子列表的通用函数
+  const renderDiceList = (results: DiceResult[], stance: AttackStance, selected: Set<string>, toggleSelection: (id: string) => void) => (
+    <div className="flex flex-wrap gap-2">
+      {results.sort((a, b) => {
+        // 1. 优先级 1：有效性 (无效骰子始终垫底)
+        const aEff = isEffective(a.face, stance);
+        const bEff = isEffective(b.face, stance);
+        if (aEff !== bEff) return aEff ? -1 : 1;
+
+        // 2. 优先级 2：面类型顺序 (闪电 > 轻击 > 眼睛 > 空白)
+        const rankA = ewTypeRank[a.face.type] || 99;
+        const rankB = ewTypeRank[b.face.type] || 99;
+        if (rankA !== rankB) return rankA - rankB;
+
+        // 3. 优先级 3：数值降序 (实现 2点轻击 > 1点轻击)
+        // 将 lightning/eye/blank 等非数字值视为 0
+        const valA = typeof a.face.value === 'number' ? a.face.value : 0;
+        const valB = typeof b.face.value === 'number' ? b.face.value : 0;
+        if (valA !== valB) return valB - valA;
+
+        return 0;
+      }).map((res) => (
+        <button
+          key={res.id}
+          onClick={() => !hasRerolled && toggleSelection(res.id)}
+          className={getDiceStyle(selected.has(res.id), isEffective(res.face, stance))}
+        >
+          <img
+            src={getDiceImage('yellow', res.face.type, res.face.value)}
+            alt={res.face.type}
+            className="w-7 h-7 object-contain"
+            loading='lazy'
+          />
+          {selected.has(res.id) && (
+            <div className="absolute -top-1 -right-1 bg-slate-800 text-white rounded-full p-0.5">
+              <Check size={10} />
+            </div>
+          )}
+        </button>
+      ))}
+    </div>
+  );
 
   const calculateWinner = (initiator: DiceResult[], responder: DiceResult[]) => {
     // 统计闪电和轻击
@@ -188,6 +260,7 @@ export function ElectronicWarfare({ translations }: ElectronicWarfareProps) {
     setHasRerolled(false);
     setWinner(null);
     setStats(null);
+    handleRoll();
   };
 
 
@@ -254,14 +327,20 @@ export function ElectronicWarfare({ translations }: ElectronicWarfareProps) {
         ) : (
           <>
             {/* 只有在没有重投过，且选择了至少一个骰子时，才显示重投按钮 */}
-            {!hasRerolled && (selectedInitiatorDice.size > 0 || selectedResponderDice.size > 0) && (
-              <button
-                onClick={handleReroll}
-                className="flex-1 py-4 rounded-2xl bg-orange-50 shadow-[4px_4px_8px_#bebebe,-4px_-4px_8px_#ffffff] font-bold text-orange-700 active:shadow-inner flex items-center justify-center gap-2"
-              >
-                <RotateCcw className="w-5 h-5" /> {translations.reroll || "重投"}
-              </button>
-            )}
+
+            <button
+              onClick={handleReroll}
+              disabled={hasRerolled || (selectedInitiatorDice.size === 0 && selectedResponderDice.size === 0)}
+              className={`flex-1 py-4 rounded-2xl font-bold shadow-[4px_4px_8px_#bebebe,-4px_-4px_8px_#ffffff] active:shadow-inner flex items-center justify-center gap-2 transition-all 
+    ${(hasRerolled || (selectedInitiatorDice.size === 0 && selectedResponderDice.size === 0))
+                  ? 'bg-slate-100 text-slate-700'
+                  : 'bg-orange-50 text-orange-700'
+                } 
+    ${(selectedInitiatorDice.size === 0 && selectedResponderDice.size === 0) ? 'opacity-30 cursor-not-allowed' : ''}`}
+            >
+              <RotateCcw className="w-5 h-5" /> {translations.reroll || translations.focus}
+            </button>
+
 
             {/* 重置按钮 */}
             <button
@@ -277,52 +356,14 @@ export function ElectronicWarfare({ translations }: ElectronicWarfareProps) {
       {/* 结果显示区域 */}
       {initiatorResults.length > 0 && (
         <div className="space-y-4">
-          <div className={neumorphicBox}>
+          <div className="bg-slate-100 rounded-3xl shadow-[inset_4px_4px_8px_#bebebe,inset_-4px_-4px_8px_#ffffff] p-5">
             <h3 className="text-xs font-black text-slate-500 uppercase mb-3">{translations.initiator}</h3>
-            <div className="flex flex-wrap gap-2">
-              {initiatorResults.map((res) => (
-                <button
-                  key={res.id}
-                  onClick={() => toggleInitiatorDiceSelection(res.id)}
-                  className={diceButtonStyle(selectedInitiatorDice.has(res.id))}
-                >
-                  {/* 替换 Zap 图标为图片 */}
-                  <img
-                    src={getDiceImage('yellow', res.face.type)}
-                    alt={res.face.type}
-                    className="w-8 h-8 object-contain"
-                    loading='lazy'
-                    onError={(e) => { (e.target as HTMLImageElement).src = '/yellow/blank-yellow.png'; }}
-                  />
-                  {/* 类型名称可以保留或根据需要隐藏 */}
-                  <span className="text-[9px] font-bold mt-1 text-slate-600">{res.face.type}</span>
-                </button>
-              ))}
-            </div>
+            {renderDiceList(initiatorResults, initiatorStance, selectedInitiatorDice, toggleInitiatorDiceSelection)}
           </div>
 
-          <div className={neumorphicBox}>
+          <div className="bg-slate-100 rounded-3xl shadow-[inset_4px_4px_8px_#bebebe,inset_-4px_-4px_8px_#ffffff] p-5">
             <h3 className="text-xs font-black text-slate-500 uppercase mb-3">{translations.responder}</h3>
-            <div className="flex flex-wrap gap-2">
-              {responderResults.map((res) => (
-                <button
-                  key={res.id}
-                  onClick={() => toggleInitiatorDiceSelection(res.id)}
-                  className={diceButtonStyle(selectedInitiatorDice.has(res.id))}
-                >
-                  {/* 替换 Zap 图标为图片 */}
-                  <img
-                    src={getDiceImage('yellow', res.face.type)}
-                    alt={res.face.type}
-                    className="w-8 h-8 object-contain"
-                    loading='lazy'
-                    onError={(e) => { (e.target as HTMLImageElement).src = '/yellow/blank-yellow.png'; }}
-                  />
-                  {/* 类型名称可以保留或根据需要隐藏 */}
-                  <span className="text-[9px] font-bold mt-1 text-slate-600">{res.face.type}</span>
-                </button>
-              ))}
-            </div>
+            {renderDiceList(responderResults, responderStance, selectedResponderDice, toggleResponderDiceSelection)}
           </div>
         </div>
       )}

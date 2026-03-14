@@ -75,9 +75,9 @@ function App() {
   // 战斗模式状态
   const [yellowCount, setYellowCount] = useState(0);
   const [redCount, setRedCount] = useState(0);
-  const [whiteCount, setWhiteCount] = useState(0);
+  const [whiteCount, setWhiteCount] = useState(3);
   const [blueCount, setBlueCount] = useState(0);
-  const [defenseStance, setDefenseStance] = useState<DefenseStance>('宕机');
+  const [defenseStance, setDefenseStance] = useState<DefenseStance>('mobility');
   const [attackStance, setAttackStance] = useState<AttackStance>('宕机');
   const [results, setResults] = useState<DiceResult[]>([]);
   const [selectedDice, setSelectedDice] = useState<Set<string>>(new Set());
@@ -96,9 +96,16 @@ function App() {
     (localStorage.getItem('app-lang') as 'zh' | 'en' | 'ja') || 'zh'
   );
   const t = translations[lang];
+
   useEffect(() => {
     localStorage.setItem('app-lang', lang);
   }, [lang]);
+  useEffect(() => {
+    if (results.length > 0) {
+      calculateBattleResult(results);
+    }
+  }, [defenseStance, attackStance]);
+  // 只要姿态发生变化，且当前有结果，就会重新计算
 
   const rollDice = (diceTemplate: DiceFace[], color: 'yellow' | 'red' | 'white' | 'blue') => {
     const randomIndex = Math.floor(Math.random() * 8);
@@ -171,93 +178,68 @@ function App() {
     setSelectedDice(newSelection);
   };
 
-  const calculateBattleResult = (diceResults: DiceResult[]) => {
-    let attackLight = 0;
-    let attackHeavy = 0;
-    let defenseValue = 0;
-    let evadeValue = 0;
+ const calculateBattleResult = (diceResults: DiceResult[]) => {
+  let attackLight = 0;
+  let attackHeavy = 0;
+  let defenseValue = 0;
+  let evadeValue = 0;
 
-    diceResults.forEach(({ face, color }) => {
-      switch (face.type) {
-        case 'light':
-          attackLight += typeof face.value === 'number' ? face.value : 0;
-          break;
-        case 'heavy':
-          attackHeavy += typeof face.value === 'number' ? face.value : 0;
-          break;
-        case 'hollow-light':
-          // 只在攻击姿态生效（red骰子）
-          if (attackStance === '攻击' && color === 'red') {
-            attackLight += typeof face.value === 'number' ? face.value : 0;
-          }
-          break;
-        case 'hollow-heavy':
-          // 只在攻击姿态生效（red骰子）
-          if (attackStance === '攻击') {
-            attackHeavy += typeof face.value === 'number' ? face.value : 0;
-          }
-          break;
-        case 'defense':
-          defenseValue += typeof face.value === 'number' ? face.value : 0;
-          break;
-        case 'hollow-defense2':
-          // 只有在防御姿态时起效，提供2点防御
-          if (defenseStance === '防御') {
-            defenseValue += 2;
-          }
-          break;
-        case 'evade':
-          evadeValue += typeof face.value === 'number' ? face.value : 0;
-          break;
-      }
-    });
+  diceResults.forEach(({ face, color }) => {
+    if (color === 'blue' && defenseStance !== 'mobility') return;
+    const val = Number(face.value) || 0; // 统一转数字
+    switch (face.type) {
+      case 'light': attackLight += val; break;
+      case 'heavy': attackHeavy += val; break;
+      case 'hollow-light': if (attackStance === '攻击') attackLight += val; break;
+      case 'hollow-heavy': if (attackStance === '攻击') attackHeavy += val; break;
+      case 'evade': evadeValue += val; break;
+      case 'defense': defenseValue += val; break;
+      case 'hollow-defense2':
+        // 关键修复：空心防御在防御姿态下提供 2 点
+        if (defenseStance === '防御') defenseValue += 2; 
+        break;
+    }
+  });
 
-    // 计算抵消
-    const totalDamage = attackLight + attackHeavy; // 总伤害
+  // --- 核心逻辑调整：闪避优先 ---
+  let tempEvade = evadeValue;
+  let tempHeavy = attackHeavy;
+  let tempLight = attackLight;
 
-    // 防御面抵消轻击
-    const lightAfterDefense = Math.max(0, attackLight - defenseValue);
+  // 1. 闪避优先抵消重击
+  const heavyEvaded = Math.min(tempHeavy, tempEvade);
+  tempHeavy -= heavyEvaded;
+  tempEvade -= heavyEvaded;
 
-    // 闪避面可以抵消轻击或重击
-    let remainingEvade = evadeValue;
-    let remainingLight = lightAfterDefense;
-    let remainingHeavy = attackHeavy;
+  // 2. 剩余闪避抵消轻击
+  const lightEvaded = Math.min(tempLight, tempEvade);
+  tempLight -= lightEvaded;
+  tempEvade -= lightEvaded;
 
-    // 优先用闪避抵消重击
-    const heavyToEvade = Math.min(remainingHeavy, remainingEvade);
-    remainingHeavy -= heavyToEvade;
-    remainingEvade -= heavyToEvade;
+  // 3. 剩下的轻击再由防御抵消
+  const lightBlockedByDefense = Math.min(tempLight, defenseValue);
+  const remainingLight = tempLight - lightBlockedByDefense;
+  const remainingHeavy = tempHeavy; // 重击不能被防御抵消
 
-    // 剩余闪避抵消轻击
-    const lightToEvade = Math.min(remainingLight, remainingEvade);
-    remainingLight -= lightToEvade;
-    remainingEvade -= lightToEvade;
+  const isPenetrated = remainingLight > 0 || remainingHeavy > 0;
+  
+  // 4. 判定命中：产生了穿透，或者攻击接触到了防御面（即闪避没开干净）
+  const isHit = isPenetrated || (lightBlockedByDefense > 0);
 
-    const isPenetrated = remainingLight > 0 || remainingHeavy > 0;
-
-    // 判断是否命中
-    // 1. 造成击穿时，必定触发命中效果
-    // 2. 有伤害且被防御抵消（未被闪避抵消）时，也会触发命中
-    const damageBlockedByDefense = Math.min(attackLight, defenseValue); // 被防御抵消的伤害
-    const isHit = isPenetrated || (totalDamage > 0 && damageBlockedByDefense > 0);
-
-    setBattleResult({
-      attackLight,
-      attackHeavy,
-      defenseValue,
-      evadeValue,
-      remainingLight,
-      remainingHeavy,
-      isPenetrated,
-      isHit
-    });
-  };
+  setBattleResult({
+    attackLight, attackHeavy,
+    defenseValue, evadeValue,
+    remainingLight, remainingHeavy,
+    isPenetrated, isHit
+  });
+};
 
   const handleReset = () => {
     setResults([]);
     setBattleResult(null);
     setSelectedDice(new Set());
     setHasRerolled(false);
+    handleRoll(); // 重置时自动投掷一次，展示初始结果
   };
 
   return (
@@ -277,8 +259,8 @@ function App() {
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="combat" className="space-y-6">
-              <LocationDice translations={t}/>
+            <TabsContent value="combat" className="space-y-3">
+              <LocationDice translations={t} />
 
               <StanceSelector
                 defenseStance={defenseStance}
@@ -289,15 +271,15 @@ function App() {
               />
 
               {/* 骰子面板 */}
-              <div className="grid grid-cols-2 gap-4 p-4 rounded-3xl bg-slate-100 shadow-[inset_6px_6px_12px_#bebebe,inset_-6px_-6px_12px_#ffffff]">
+              <div className="grid grid-cols-2 gap-2 p-2 rounded-xl bg-slate-100 shadow-[inset_6px_6px_12px_#bebebe,inset_-6px_-6px_12px_#ffffff]">
                 <div className="space-y-4">
                   {/* <p className="text-[10px] font-black text-red-400 uppercase tracking-tighter border-b border-red-100 pb-1">Attacker</p> */}
-                  <DiceSelector label={t.light_attack} count={yellowCount} onCountChange={setYellowCount} color="bg-yellow-400" traslations={t}/>
+                  <DiceSelector label={t.light_attack} count={yellowCount} onCountChange={setYellowCount} color="bg-yellow-400" traslations={t} />
                   <DiceSelector label={t.heavy_attack} count={redCount} onCountChange={setRedCount} color="bg-red-500" traslations={t} />
                 </div>
                 <div className="space-y-4 border-l border-slate-200 pl-4 relative">
                   {/* <p className="text-[10px] font-black text-blue-400 uppercase tracking-tighter border-b border-blue-100 pb-1">Defender</p> */}
-                  <DiceSelector label={t.defense_dice} count={whiteCount} onCountChange={setWhiteCount} color="bg-white" traslations={t}   />
+                  <DiceSelector label={t.defense_dice} count={whiteCount} onCountChange={setWhiteCount} color="bg-white" traslations={t} />
                   <div className="relative">
                     <DiceSelector label={t.evade_dice} count={blueCount} onCountChange={setBlueCount} color="bg-blue-500" disabled={defenseStance !== 'mobility'} traslations={t} />
                     {defenseStance !== 'mobility' && (
@@ -319,10 +301,10 @@ function App() {
                   </button>
                 ) : (
                   <>
-                    {!hasRerolled && <button onClick={handleReroll} disabled={hasRerolled || selectedDice.size === 0}
-                      className="flex-1 py-4 rounded-2xl bg-orange-50 text-orange-700 font-bold shadow-[4px_4px_8px_#bebebe,-4px_-4px_8px_#ffffff] active:shadow-inner flex items-center justify-center gap-2">
+                    <button onClick={handleReroll} disabled={hasRerolled || selectedDice.size === 0}
+                      className={`flex-1 py-4 rounded-2xl  font-bold shadow-[4px_4px_8px_#bebebe,-4px_-4px_8px_#ffffff] active:shadow-inner flex items-center justify-center gap-2 ${hasRerolled ? `bg-slate-100 text-slate-700` : `bg-orange-50 text-orange-700`} ${selectedDice.size === 0 ? 'opacity-30 cursor-not-allowed' : ''}`}>
                       {t.focus}
-                    </button>}
+                    </button>
 
                     <button onClick={handleReset}
                       className=" p-4 rounded-2xl flex items-center justify-center bg-slate-100 text-slate-500 shadow-[4px_4px_8px_#bebebe,-4px_-4px_8px_#ffffff] active:shadow-inner">
@@ -335,37 +317,37 @@ function App() {
               {/* 结果显示 */}
               {results.length > 0 && (
                 <div className="p-4 rounded-3xl bg-slate-100 shadow-[inset_4px_4px_8px_#bebebe,inset_-4px_-4px_8px_#ffffff]">
-                  <DiceResults {...{ results, battleResult, defenseStance, attackStance, selectedDice, hasRerolled }} onDiceClick={toggleDiceSelection} translations={t}/> 
+                  <DiceResults {...{ results, battleResult, defenseStance, attackStance, selectedDice, hasRerolled }} onDiceClick={toggleDiceSelection} translations={t} />
                 </div>
               )}
             </TabsContent>
             {/* 电子战模式 */}
             <TabsContent value="electronic" className="mt-6">
-              <ElectronicWarfare translations={t}/>
+              <ElectronicWarfare translations={t} />
             </TabsContent>
           </Tabs>
           {/* 语言切换 */}
-        <div className="flex justify-start mb-2">
-          <div className="flex items-center gap-2 bg-slate-100 p-2 rounded-2xl shadow-[4px_4px_8px_#bebebe,-4px_-4px_8px_#ffffff]">
-            <Globe className="w-4 h-4 text-slate-400 ml-1" />
-            <div className="flex gap-1">
-              {(['zh', 'en', 'ja'] as const).map((l) => (
-                <button
-                  key={l}
-                  onClick={() => setLang(l)}
-                  className={`px-3 py-1 text-[10px] font-black rounded-lg transition-all ${lang === l
+          <div className="flex justify-start mb-2">
+            <div className="flex items-center gap-2 bg-slate-100 p-2 rounded-2xl shadow-[4px_4px_8px_#bebebe,-4px_-4px_8px_#ffffff]">
+              <Globe className="w-4 h-4 text-slate-400 ml-1" />
+              <div className="flex gap-1">
+                {(['zh', 'en', 'ja'] as const).map((l) => (
+                  <button
+                    key={l}
+                    onClick={() => setLang(l)}
+                    className={`px-3 py-1 text-[10px] font-black rounded-lg transition-all ${lang === l
                       ? 'bg-slate-200 shadow-[inset_2px_2px_4px_#bebebe,inset_-2px_-2px_4px_#ffffff] text-slate-700'
                       : 'text-slate-400 hover:text-slate-600'
-                    }`}
-                >
-                  {l === 'zh' ? '中' : l === 'en' ? 'EN' : '日'}
-                </button>
-              ))}
+                      }`}
+                  >
+                    {l === 'zh' ? '中' : l === 'en' ? 'EN' : '日'}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
-        </div>
         </Card>
-        
+
       </div>
     </div>
   );

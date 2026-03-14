@@ -28,7 +28,7 @@ export function LocationDice({ translations }: LocationProps) {
     >
       <div className="flex items-center gap-4">
         {/* 图片展示区 */}
-        <div className="w-8 h-8  bg-slate-200 shadow-inner flex items-center justify-center overflow-hidden">
+        <div className={`w-8 h-8  bg-slate-200 shadow-inner flex items-center justify-center overflow-hidden ${!location ? 'rounded-xl' : ''}`}>
           {location ? (
             <img
               src={LOCATION_PART_IMAGES[location]}
@@ -37,7 +37,7 @@ export function LocationDice({ translations }: LocationProps) {
               loading="lazy"
             />
           ) : (
-            <Target className="w-8 h-8 text-slate-400" />
+            <Target className="w-8 h-8 text-slate-400 " />
           )}
         </div>
 

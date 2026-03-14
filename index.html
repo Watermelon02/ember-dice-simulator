@@ -1,10 +1,46 @@
 
   <!DOCTYPE html>
   <html lang="en">
+   
     <head>
       <meta charset="UTF-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1.0" />
       <title>Dice Simulation Web App</title>
+        <script>
+    (function () {
+      // 1. 判定是否在中国大陆 (UTC+8)
+      var isChina = new Date().getTimezoneOffset() === -480;
+
+      if (isChina) {
+          document.title = "骰子模拟器";
+        } else {
+          document.title = "Dice Simulator";
+        }
+
+      // 2. 动态加载 Google Analytics (仅限非中国地区)
+      if (!isChina) {
+        var gaScript = document.createElement('script');
+        gaScript.async = true;
+        gaScript.src = 'https://www.googletagmanager.com/gtag/js?id=G-C20B5DP4NF';
+        document.head.appendChild(gaScript);
+
+        window.dataLayer = window.dataLayer || [];
+        function gtag() { dataLayer.push(arguments); }
+        gtag('js', new Date());
+        gtag('config', 'G-C20B5DP4NF');
+        console.log("🌐 境外模式：已激活 Google Analytics");
+      } else {
+        var _hmt = _hmt || [];
+        (function () {
+          var hm = document.createElement("script");
+          hm.src = "https://hm.baidu.com/hm.js?f8fe7a809a811fc54a1b6acf3cd2d608";
+          var s = document.getElementsByTagName("script")[0];
+          s.parentNode.insertBefore(hm, s);
+        })();
+        console.log("🚀 境内模式：已跳过 GA，改用极速字体镜像");
+      }
+    })();
+  </script>
     </head>
 
     <body>
